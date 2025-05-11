@@ -1,0 +1,242 @@
+---
+title: "Untitled"
+author: "Pamela"
+date: "2025-04-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+#supprimer les variables passées de l'environnement
+```{r}
+
+rm(list = ls())
+
+```
+
+
+## Objectif : Analyse Factorielle des Correspondances (AFC) sur le jeu de données mortality
+
+```{r}
+# Chargement des packages nécessaires
+library(FactoMineR)
+library(factoextra)
+library(plotly)
+library(tidyverse)
+
+# Chargement du jeu de données
+data("mortality")
+head(mortality)
+
+```
+
+Type de tableau
+
+Le tableau mortality est un tableau de contingence croisant des régions (lignes) et des causes de mortalité (colonnes), contenant des effectifs. Il est donc adapté à une AFC.
+
+Matrice des fréquences
+
+```{r}
+
+# Fréquences relatives
+freq <- mortality / sum(mortality)
+freq
+
+
+```
+
+Profils lignes et profils colonnes
+
+```{r}
+# Charger le jeu de données
+data("mortality", package = "FactoMineR")
+
+# Vérification du type
+str(mortality)
+
+# Conversion en matrice numérique
+mortality_mat <- as.matrix(mortality)
+
+# Calcul des profils lignes
+row_profiles <- prop.table(mortality_mat, margin = 1)
+
+# Calcul des profils colonnes
+col_profiles <- prop.table(mortality_mat, margin = 2)
+
+
+
+```
+Tableau des liaisons
+
+```{r}
+# Fréquences marginales
+fi_dot <- rowSums(freq)
+f_dotj <- colSums(freq)
+
+# Calcul du tableau des liaisons
+liaisons <- (freq - outer(fi_dot, f_dotj)) / outer(fi_dot, f_dotj)
+liaisons
+
+```
+
+Modalités qui s’attirent ou se repoussent
+Interprétation :
+
+Si tij > 0, la modalité i est surreprésentée dans la modalité j → elles s’attirent.
+
+Si tij < 0, sous-représentation → elles se repoussent
+
+```{r}
+which(liaisons > 0.2, arr.ind = TRUE) # seuil ajustable
+which(liaisons < -0.2, arr.ind = TRUE)
+
+```
+Taux de liaison maximum
+
+```{r}
+max_liaison <- max(abs(liaisons))
+max_liaison
+
+```
+#Ce taux indique la plus grande déviation par rapport à l’indépendance. Il peut aussi s'exprimer comme un pourcentage d'écart à l'indépendance.
+
+
+Analyse Factorielle des Correspondances (AFC)
+
+```{r}
+# AFC
+res.ca <- CA(mortality, graph = FALSE)
+
+```
+
+Nombre d’axes à retenir
+
+```{r}
+fviz_screeplot(res.ca, addlabels = TRUE) # Graphique des inerties
+
+```
+#--------------Commentaire
+Calculons le pourcentage cumulé de variance expliquée en ajoutant les axes les uns après les autres :
+
+1 axe : 49.7%
+2 axes : 49.7% + 26.3% = 76.0%
+3 axes : 76.0% + 9.4% = 85.4%
+En suivant la règle de retenir les axes qui expliquent un pourcentage cumulé raisonnable (70-80%), je peux considérer les deux premiers axes. Ils expliquent à eux seuls 76.0% de la variance totale, ce qui est un pourcentage déjà très respectable et se situe dans la fourchette de la règle.
+
+
+#Contribution au 1er axe
+
+```{r}
+fviz_contrib(res.ca, choice = "row", axes = 1)
+fviz_contrib(res.ca, choice = "col", axes = 1)
+
+```
+
+#--------------Commentaire sur la contribution du premier axe
+
+L'Axe 1 oppose principalement les jeunes adultes (15-24 ans et 25-34 ans), qui contribuent fortement et positivement à cet axe, aux personnes plus âgées (notamment 65-74 ans et 75-84 ans) qui, bien qu'ayant une contribution plus faible individuellement, peuvent indiquer une tendance opposée sur cet axe si leurs profils ont des signes opposés sur la Dimension 1 (ce que ce graphique seul ne nous dit pas).
+
+En bref, l'Axe 1 semble discriminer selon l'âge, avec un pôle jeune adulte fortement représenté.
+
+#Contribution au 2ème axe
+
+```{r}
+fviz_contrib(res.ca, choice = "row", axes = 2)
+fviz_contrib(res.ca, choice = "col", axes = 2)
+
+```
+#--------------Commentaire sur la contribution du deuxième axe
+
+Pour l'Axe 2, les modalités qui contribuent le plus sont :
+
+- 15-24 ans (79) : Contribution positive élevée.
+- 55-64 ans (06) : Contribution positive notable.
+- 85-94 ans (79) et 65-74 ans (06) : Contributions également importantes.
+
+L'Axe 2 semble donc opposer principalement le groupe des très jeunes adultes (15-24 ans) à un ensemble plus hétérogène incluant des adultes d'âge moyen (55-64 ans) et des personnes âgées (85-94 ans et 65-74 ans).
+
+#Visualisation interactive (Plotly)
+
+
+```{r}
+# Extraction des coordonnées
+row_coords <- as.data.frame(res.ca$row$coord)
+col_coords <- as.data.frame(res.ca$col$coord)
+
+# Renommage explicite des colonnes
+colnames(row_coords)[1:2] <- c("Dim1", "Dim2")
+colnames(col_coords)[1:2] <- c("Dim1", "Dim2")
+
+# Ajout des labels
+row_coords$label <- rownames(row_coords)
+col_coords$label <- rownames(col_coords)
+
+
+# Plot interactif avec Plotly
+plot_ly() %>%
+  add_trace(data = row_coords, x = ~Dim1, y = ~Dim2, text = ~label,
+            type = 'scatter', mode = 'markers+text', name = "Lignes",
+            textposition = 'top center', marker = list(color = 'skyblue')) %>%
+  add_trace(data = col_coords, x = ~Dim1, y = ~Dim2, text = ~label,
+            type = 'scatter', mode = 'markers+text', name = "Colonnes",
+            textposition = 'top center', marker = list(color = 'red')) %>%
+  layout(title = "AFC interactive - lignes & colonnes",
+         xaxis = list(title = "Dim 1"), yaxis = list(title = "Dim 2"))
+
+
+```
+
+#1. Distribution des individus (régions) avec composantes principales
+```{r}
+# Graphique des individus (régions)
+fviz_ca_row(res.ca, 
+            col.row = "contrib",  # Couleur selon la contribution
+            gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+            repel = TRUE,         # Evite le chevauchement des textes
+            shape.row = 17,       # Forme des points (triangle)
+            title = "Positionnement des régions dans le plan factoriel") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = paste0("Dimension 1 (", round(res.ca$eig[1,2], 1), "%)"),
+       y = paste0("Dimension 2 (", round(res.ca$eig[2,2], 1), "%)"))
+```
+# On constante que peu contribuent aux deux dimensions. Affichons donc les 20 qui contribuent le plus 
+```{r}
+# Version simplifiée avec l'argument select.row
+fviz_ca_row(res.ca, 
+            col.row = "contrib",
+            gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+            repel = TRUE,
+            select.row = list(contrib = 20),  # Sélectionne directement les 20 plus grandes contributions
+            title = "Top 20 régions contribuant le plus aux axes") +
+  theme_minimal()
+```
+Ce graphique identifie les régions les plus influentes dans la structuration des données selon les deux premières dimensions de l'AFC. Les régions éloignées de l'origine et de couleur chaude sont celles qui différencient le plus les profils observés selon les variables analysées.
+
+La cause "Road accidents" (accidents de la route), située en haut à droite et de couleur orange, suggère qu'elle contribue fortement à la définition des deux dimensions et est positivement associée aux caractéristiques qui définissent les valeurs élevées de Dimension 1 et Dimension 2.
+
+
+#Corrélations des variables
+```{r}
+# Corrélations des variables (colonnes)
+fviz_ca_col(res.ca, 
+            col.col = "contrib",  # Couleur selon la contribution
+            gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+            repel = TRUE,         # Evite le chevauchement des textes
+            shape.col = 19,       # Forme des points
+            col.col.sup = "darkgreen",  # Couleur pour les suppl.
+            map = "symbiplot",    # Symétrie entre lignes et colonnes
+            title = "Corrélations - Causes de mortalité") +
+  theme_minimal() +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(x = paste0("Dimension 1 (", round(res.ca$eig[1,2], 1), "%)"),
+       y = paste0("Dimension 2 (", round(res.ca$eig[2,2], 1), "%)"))
+```
+
+Ce graphique met en lumière les causes de mortalité qui sont les plus importantes pour structurer les différences observées selon les deux premières dimensions de l'AFC. Les causes éloignées de l'origine et de couleur chaude sont celles qui ont les profils de répartition les plus distincts par rapport aux autres 
+variables analysées. "15-24 (79)" contribue le plus.
